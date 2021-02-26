@@ -342,7 +342,7 @@ if __name__ == "__main__": # as if it would never not be
         board.append(row)
     
     root = tk.Tk()
-    root.geometry('520x480')
+    root.geometry('')
     app = MainWindow(root,board)
     app.mainloop()
 
