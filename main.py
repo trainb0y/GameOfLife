@@ -1,5 +1,45 @@
 import tkinter as tk
-import time
+from patterns import patterns
+
+class CustomText(tk.Text):
+    '''A text widget with a new method, highlight_pattern()
+
+    example:
+
+    text = CustomText()
+    text.tag_configure("red", foreground="#ff0000")
+    text.highlight_pattern("this should be red", "red")
+
+    The highlight_pattern method is a simplified python
+    version of the tcl code at http://wiki.tcl.tk/3246
+    '''
+    def __init__(self, *args, **kwargs):
+        tk.Text.__init__(self, *args, **kwargs)
+
+    def highlight_pattern(self, pattern, tag, start="1.0", end="end",
+                          regexp=False):
+        '''Apply the given tag to all text that matches the given pattern
+
+        If 'regexp' is set to True, pattern will be treated as a regular
+        expression according to Tcl's regular expression syntax.
+        '''
+
+        start = self.index(start)
+        end = self.index(end)
+        self.mark_set("matchStart", start)
+        self.mark_set("matchEnd", start)
+        self.mark_set("searchLimit", end)
+
+        count = tk.IntVar()
+        while True:
+            index = self.search(pattern, "matchEnd","searchLimit",
+                                count=count, regexp=regexp)
+            if index == "": break
+            if count.get() == 0: break # degenerate pattern which matches zero-length strings
+            self.mark_set("matchStart", index)
+            self.mark_set("matchEnd", "%s+%sc" % (index, count.get()))
+            self.tag_add(tag, "matchStart", "matchEnd")
+
 
 def find_neighbors(x,y,board):
     # Return a list of all of a cells neighbors
@@ -91,16 +131,18 @@ class MainWindow(tk.Frame):
         self.next_button = tk.Button(self,text="Next",command=self.next)
         self.next_button.grid(row=0,column=1,sticky='ew')
 
+        ### warp
         self.warp_StringVar = tk.StringVar()
         self.warp_StringVar.set("")
         self.warp_button = tk.Button(self,text="Warp",command = self.warp)
-        self.warp_button.grid(row=1,column=4)
+        self.warp_button.grid(row=1,column=2)
         self.warp_label = tk.Label(self,text="Generations to Warp:")
         self.warp_label.grid(row=1,column=0)
         self.warp_entry = tk.Entry(self, textvariable=self.warp_StringVar)
         self.warp_entry.grid(row=1,column=1)
+        ### end warp
 
-
+        ### auto advance
         self.auto_StringVar = tk.StringVar()
         self.delay_StringVar = tk.StringVar()
         self.auto_StringVar.set("")
@@ -118,23 +160,60 @@ class MainWindow(tk.Frame):
 
         self.auto_button = tk.Button(self,text="Auto",command = self.auto)
         self.auto_button.grid(row=2,column=4)
-
+        ### end auto advance
 
 
         self.edit_button = tk.Button(self,text="Edit",command=self.edit)
-        self.edit_button.grid(row=0,column=3,sticky='ew')
+        self.edit_button.grid(row=0,column=2,sticky='ew')
 
 
-        self.output_area = tk.Text(self,width=60,height=20,wrap="none")
+        ### output box
+        self.output_area = CustomText(self,width=60,height=20,wrap="none")
+        self.output_area.tag_configure("dead",background="black",foreground="black")
+        self.output_area.tag_configure("alive",background="black",foreground="yellow")
         self.vertical_bar = tk.Scrollbar(self,orient="vertical",command=self.output_area.yview)
         self.horizontal_bar = tk.Scrollbar(self,orient="horizontal",command=self.output_area.xview)
 
         self.output_area.configure(yscrollcommand=self.vertical_bar.set, xscrollcommand=self.horizontal_bar.set)
 
-        self.output_area.grid(row=3,pady=10,padx=10,columnspan=8, sticky="nsew")
-        self.vertical_bar.grid(row=3, column=8, sticky="ns")
-        self.horizontal_bar.grid(row=4, column=0, columnspan=8, sticky="ew")
+        self.output_area.grid(row=4,pady=10,padx=10,columnspan=8, sticky="nsew")
+        self.vertical_bar.grid(row=4, column=8, sticky="ns")
+        self.horizontal_bar.grid(row=5, column=0, columnspan=8, sticky="ew")
+        ### end output box
 
+
+
+        ### template loading
+        self.load_template_label = tk.Label(self,text="Load Template:")
+        self.load_template_label.grid(row=3,column=0)
+
+        self.load_template_StringVar = tk.StringVar()
+        self.load_template_StringVar.set("")
+
+
+        self.load_template_menu = tk.OptionMenu(self,self.load_template_StringVar,*[*patterns])
+        self.load_template_menu.grid(row=3,column=1)
+
+        self.load_template_button = tk.Button(self,text="Load",command=self.load_template)
+        self.load_template_button.grid(row=3,column=2)
+        ### end template loading
+        
+    
+    def load_template(self):
+        new_board = []
+        text = patterns[self.load_template_StringVar.get()]
+        text = text.splitlines()
+        for row in text:
+            new_row = []
+            for char in row:
+                if char == "O": new_row.append(True)
+                else: new_row.append(False)
+            new_board.append(new_row)
+
+        self.master.board = new_board
+        self.update_output()
+
+       
     def update_output(self):
         output = ''
         for row in self.master.board:
@@ -143,11 +222,31 @@ class MainWindow(tk.Frame):
                 else: output += "#"
             output += "\n"
 
+        
+        vbar = self.vertical_bar.get()    # Need to get the curren scrollbar position
+        hbar = self.horizontal_bar.get()  # so that when this is done the scrollbars remain
+                                          # in the same place, otherwise, they reset.
+ 
         self.output_area.configure(state ='normal')
         self.output_area.delete("1.0",tk.END)
         self.output_area.insert(tk.INSERT, output)
+
+        
+        self.output_area.highlight_pattern("#","dead")
+        self.output_area.highlight_pattern("O","alive")
+
+
         self.output_area.configure(state ='disabled')
-    
+
+        #self.output_area.yview_moveto(vbar[1])
+        #self.output_area.xview_moveto(hbar[1]) #ACK NO DOESNT WORK https://anzeljg.github.io/rin2/book2/2405/docs/tkinter/text-methods.html
+        #print(hbar,vbar)
+        
+
+
+
+
+     
     def next(self):
         self.master.board = next_generation(self.master.board)
         self.update_output()
@@ -182,7 +281,6 @@ class EditWindow(tk.Toplevel):
         super().__init__(master = master) 
         self.title("Edit") 
         self.grid()
-        
         self.game = game
         self.init_window() # Create Widgets
   
@@ -231,8 +329,8 @@ class EditWindow(tk.Toplevel):
 if __name__ == "__main__": # as if it would never not be
 
     
-    BOARD_WIDTH = 40
-    BOARD_HEIGHT = 15
+    BOARD_WIDTH = 100
+    BOARD_HEIGHT = 40
 
 
     row = []
@@ -244,7 +342,9 @@ if __name__ == "__main__": # as if it would never not be
         board.append(row)
     
     root = tk.Tk()
-    root.geometry('520x440')
+    root.geometry('520x480')
     app = MainWindow(root,board)
     app.mainloop()
+
+
 
